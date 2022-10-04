@@ -6,11 +6,18 @@ Description:
         - Implementations of the STLTree node objects.
 """
 
+include("node.jl")
+
+using JuMP, Gurobi
+
 # ==============
 # Abstract Types
 # ==============
 
-abstract type Node end
+
+# =========
+# Constants
+# =========
 
 const EPS = 0.00001
 
@@ -18,64 +25,9 @@ const EPS = 0.00001
 # Regular Types (Structs)
 # =======================
 
-# struct Node
-#     Operator::String
-#     Children::Vector{Union{Node,Float64}}
-#     Zs::Any
-#     Info::String
-# end
-
-mutable struct ConjunctionNode <: Node
-    Children::Vector{Union{Node,Float64}}
-    Constraints::Any
-    Zs
-    Info::String
-end
-
-"""
-DisjunctionNode
-Description:
-    An object that defines the disjunction between all formulas
-    that are represented as its children.
-"""
-mutable struct DisjunctionNode <: Node
-    Children::Vector{Union{Node,Float64}}
-    Constraints::Any
-    Zs
-    Info::String
-end
-
 # ==================
 # Quick Constructors
 # ==================
-
-function ConjunctionNode(childrenIn::Vector{Union{Node,Float64}})::ConjunctionNode
-    return ConjunctionNode(childrenIn,[],[],"")
-end
-
-function ConjunctionNode(childrenIn::Vector{Float64})::ConjunctionNode
-    return ConjunctionNode(childrenIn,[],[],"")
-end
-
-function ConjunctionNode(childrenIn::Vector{Node})::ConjunctionNode
-    return ConjunctionNode(childrenIn,[],[],"")
-end
-
-function ConjunctionNode(childrenIn::Vector{Float64},constraintIn::Vector{Float64})::ConjunctionNode
-    return ConjunctionNode(childrenIn,constraintIn,[],"")
-end
-
-function DisjunctionNode(childrenIn::Vector{Union{Node,Float64}})::DisjunctionNode
-    return DisjunctionNode(childrenIn,[],[],"")
-end
-
-function DisjunctionNode(childrenIn::Vector{Float64})::DisjunctionNode
-    return DisjunctionNode(childrenIn,[],[],"")
-end
-
-function DisjunctionNode(childrenIn::Vector{Node})::DisjunctionNode
-    return DisjunctionNode(childrenIn,[],[],"")
-end
 
 
 # =========
@@ -128,16 +80,16 @@ Variables:
     curve - This is an array of arrays defining the curve that the robot
             plans.
 """
-function always(segment_index::Int,a::Float64,b::Float64,zphis::Vector{Float64},pwl_curve::Vector{Vector{Float64}})
+function always(segment_index::Int,a::Float64,b::Float64,zphis::Vector{Float64},pwl_curve::Vector{Tuple{Vector{Float64},Float64}})
     # Get The start times of each pwl_curve
-    t_i = pwl_curve[segment_index][1]
-    t_i_1 = pwl_curve[segment_index+1][1]
+    t_i = pwl_curve[segment_index][2]
+    t_i_1 = pwl_curve[segment_index+1][2]
     conjunctions = Vector{Node}([])
 
     # Loop
     for j in range(1,stop=length(pwl_curve)-1)
-        t_j = pwl_curve[j][1]
-        t_j_1 = pwl_curve[j+1][1]
+        t_j = pwl_curve[j][2]
+        t_j_1 = pwl_curve[j+1][2]
         push!(conjunctions,
             DisjunctionNode(
                 Vector{Union{Node,Float64}}([noIntersection(t_j,t_j_1, t_i + a , t_i_1 + b),zphis[j]])
@@ -163,7 +115,7 @@ Variables:
     curve - This is an array of arrays defining the curve that the robot
             plans.
 """
-function eventually(segment_index::Int,a::Float64,b::Float64,zphis,pwl_curve::Vector{Vector{Float64}})
+function eventually(segment_index::Int,a::Float64,b::Float64,zphis,pwl_curve::Vector{Tuple{Vector{Any},Any}})
     # Get The start times of each pwl_curve
     t_i = pwl_curve[segment_index][1]
     t_i_1 = pwl_curve[segment_index+1][1]
@@ -173,8 +125,8 @@ function eventually(segment_index::Int,a::Float64,b::Float64,zphis,pwl_curve::Ve
     # Loop
     disjunctions = Vector{Node}([])
     for j in range(1,stop=length(pwl_curve)-1)
-        t_j = PWL[j][1]
-        t_j_1 = PWL[j+1][1]
+        t_j = pwl_curve[j][2]
+        t_j_1 = pwl_curve[j+1][2]
         push!(disjunctions,ConjunctionNode([hasIntersection(t_j,t_j_1, t_i + a , t_i_1 + b),zphis[j]]))
     end
     
@@ -187,6 +139,56 @@ bounded_eventually(segment_index::Int,a::Float64,b::Float64,zphis,pwl_curve::Vec
 Description:
 
 """
+function bounded_eventually(segment_index::Int,a::Float64,b::Float64,zphis,pwl_curve,tmax::Float64)::DisjunctionNode
+    # Get the start and end times of segment segment_index
+    t_i = pwl_curve[segment_index][2]
+    t_i_1 = pwl_curve[segment_index+1][2]
+
+    z_intervalWidth = b-a-(t_i_1-t_i)-EPS
+    
+    # Create loop of disjunctions.
+    disjunctions = Vector{Node}([])
+    for j in range(1,stop=length(pwl_curve)-1)
+        t_j = pwl_curve[j][2]
+        t_j_1 = pwl_curve[j+1][2]
+        push!(disjunctions,ConjunctionNode([hasIntersection(t_j, t_j_1, t_i_1 + a, t_i + b), zphis[j]]))
+    end
+
+    return DisjunctionNode([
+        ConjunctionNode([z_intervalWidth, DisjunctionNode(disjunctions)]),
+        t_i+b-tmax-EPS
+        ])
+
+end
+
+"""
+until
+Description:
+    This function creates an until relationship between the zphi Variables
+    and the zphi2 variables.
+"""
+function until(segment_index::Int,a::Float64,b::Float64, zphi1s, zphi2s, pwl_curve)
+    t_i = pwl_curve[segment_index][2]
+    t_i_1 = pwl_curve[segment_index+1][2]
+
+    z_intervalWidth = b - a - (t_i_1-t_i) - EPS
+    disjunctions = Vector{Node}([])
+    for j in range(1,stop=length(pwl_curve)-1)
+        t_j = pwl_curve[j][2]
+        t_j_1 = pwl_curve[j+1][2]
+        conjunctions = [hasIntersection(t_j, t_j_1, t_i_1 + a, t_i + b), zphi2s[j]]
+        for l in range(1,stop=j+1)
+            t_l = pwl_curve[l][2]
+            t_l_1 = pwl_curve[l+1][2]
+            push!(conjunctions,
+                DisjunctionNode([noIntersection(t_l, t_l_1, t_i, t_i_1 + b), zphi1s[l]])
+            )
+        end
+        push!(disjunctions,Conjunction(conjunctions))
+    end
+    
+    return ConjunctionNode([z_intervalWidth, DisjunctionNode(disjunctions)])
+end
 
 """
 clearSpecTree
@@ -231,5 +233,43 @@ function plan(x0s::Vector{Vector{Float64}},specificationTree::Vector{Node},limit
         for spec in specs
             clearSpecTree(spec)
         end
+
+        println("----------------------------")
+        println("num_segs", num_segs)
+
+        pwl_curves = Vector{Vector{Vector{Float64}}}([])
+        
+        # Create a Gurobi model
+        model = Model(Gurobi.Optimizer)
+        
+        # Ignore some of the parameter setting.
+
+        # Construct constraints on each path (for each robot)
+        # in collection.
+        for index_a in range(1,stop=length(x0s))
+            x0 = x0s[index_a]
+            spec = specs[index_a]
+
+            dims = len(x0)
+
+            # Create a curve made up of each of the endpoints of 
+            # agent index_a's path.
+            pwl_curve = Vector{Vector{Any}}([])
+            for i in range(1,num_segs+1)
+                push!(
+                    pwl_curve,
+                    [@variable(model,[1:dims],base_name = "x"+String(index_a)+"_"),@variable(model,)]
+                )
+            end
+            # This contains num_segs segments, which means we need
+            # num_segs + 1 endpoints.
+            push!(pwl_curves,pwl_curve)
+            
+            # Create initial constraints
+            for dim_index in range(1,stop=dims)
+                @constraint(model, pwl_curve[0][0][dim_index,1] == x0[dim_index])
+            end
+        end
+
     end
 end
