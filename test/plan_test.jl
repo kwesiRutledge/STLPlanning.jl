@@ -81,8 +81,8 @@ include("../src/PWLPlan.jl")
                     ]
                 )
             end
-            println(pwl_curve)
-            println(pwl_curve[1])
+            # println(pwl_curve)
+            # println(pwl_curve[1])
 
             # This contains num_segs segments, which means we need
             # num_segs + 1 endpoints.
@@ -103,8 +103,73 @@ include("../src/PWLPlan.jl")
             end
 
             # Limits Constraints
+            if limits != []
+                add_space_constraints(model,[P[0] for P in pwl_curve ],limits)
+            end
             
         end
+    end
+
+end
+
+@testset "2. add_space_constraints (Using Two Dimensions)" begin
+    # Create a simple JuMP Model and limits for the model
+    model = Model(Gurobi.Optimizer)
+
+    pwl_curve = []
+    for endpt_indx in range(1,stop=11)
+        push!(
+            pwl_curve,
+            tuple(@variable(model,[1:2],base_name = string("x_section",endpt_indx,"_")),@variable(model,base_name = string("t_section",endpt_indx,"_")) )
+            )
+    end
+
+    bounds = [1.0,3.0,5.0,7.0]
+
+    add_space_constraints(model,[P[1] for P in pwl_curve ],bounds)
+
+    optimize!(model)
+    # @show value(pwl_curve[1][1][1])
+    
+    # Get the value of every end point.
+    for endpt_indx in range(1,stop=length(pwl_curve))
+        tuple0 = pwl_curve[endpt_indx]
+        pt0 = [value(tuple0[1][1]); value(tuple0[1][2])]
+
+        @test bounds[ [1,3] ] <= pt0
+        @test pt0 <= bounds[ [2,4] ]
+    end
+end
+
+@testset "3. add_velocity_constraints" begin
+    # Create a simple JuMP Model and limits for the model
+    model = Model(Gurobi.Optimizer)
+
+    pwl_curve = Vector{Tuple{Vector{VariableRef},VariableRef}}([])
+    for endpt_indx in range(1,stop=11)
+        push!(
+            pwl_curve,
+            tuple(@variable(model,[1:2],base_name = string("x_section",endpt_indx,"_")),@variable(model,base_name = string("t_section",endpt_indx,"_")) )
+            )
+    end
+
+    vmax = 4.0
+
+    add_velocity_constraints(model, pwl_curve , vmax)
+
+    optimize!(model)
+
+    # Get the value of every end point.
+    for endpt_indx in range(1,stop=length(pwl_curve)-1)
+        tuple0 = pwl_curve[endpt_indx]
+        x_i = [value(tuple0[1][1]); value(tuple0[1][2])]
+        t_i = value(tuple0[2])
+
+        tuple1 = pwl_curve[endpt_indx+1]
+        x_ip1 = [value(tuple1[1][1]); value(tuple1[1][2])]
+        t_ip1 = value(tuple1[2])
+
+        @test norm((x_ip1-x_i)/(t_ip1-t_i),1) < vmax
     end
 
 end
