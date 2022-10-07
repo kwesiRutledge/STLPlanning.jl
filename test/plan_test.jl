@@ -4,8 +4,9 @@ Description:
     Making use of the 
 """
 
-using Test
 include("../src/PWLPlan.jl")
+using Test
+using LinearAlgebra
 
 @testset "1. plan test" begin
 
@@ -149,13 +150,28 @@ end
     for endpt_indx in range(1,stop=11)
         push!(
             pwl_curve,
-            tuple(@variable(model,[1:2],base_name = string("x_section",endpt_indx,"_")),@variable(model,base_name = string("t_section",endpt_indx,"_")) )
-            )
+            tuple(@variable(model,[1:2],base_name = string("x_section",endpt_indx,"_")),@variable(model,base_name = string("t_section",endpt_indx)) )
+        )
     end
 
     vmax = 4.0
+    
+    for endpt_indx in range(1,stop=11-1)
+        # Get times
+        x1, t1 = pwl_curve[endpt_indx]
+        x2, t2 = pwl_curve[endpt_indx+1]
 
-    add_velocity_constraints(model, pwl_curve , vmax)
+        # Constrain times to be progressing
+        @constraint(model, t1 <= t2)
+
+        # Constrain dynamics evolution
+        @constraint(model, x2 - x1 .<= 4)
+        @constraint(model, x2 - x1 .>= -4)
+    end
+
+    add_velocity_constraints(model, pwl_curve, vmax)
+
+    @constraint(model,pwl_curve[1][1] .== zeros(2,1))
 
     optimize!(model)
 
@@ -169,7 +185,62 @@ end
         x_ip1 = [value(tuple1[1][1]); value(tuple1[1][2])]
         t_ip1 = value(tuple1[2])
 
-        @test norm((x_ip1-x_i)/(t_ip1-t_i),1) < vmax
+        @test norm((x_ip1-x_i)/(t_ip1-t_i),1) <= vmax
+    end
+
+end
+
+@testset "4. add_time_constraints" begin
+
+    """
+    Test Set for add_time_constraints()
+    Description:
+        This test will look very similar to the one for add_velocity_constraints.
+        we keep most of the same constraints but remove the hommemade constraint on times and replace it with the new one.
+    """
+
+    # Create a simple JuMP Model and limits for the model
+    model = Model(Gurobi.Optimizer)
+
+    pwl_curve = Vector{Tuple{Vector{VariableRef},VariableRef}}([])
+    for endpt_indx in range(1,stop=11)
+        push!(
+            pwl_curve,
+            tuple(@variable(model,[1:2],base_name = string("x_section",endpt_indx,"_")),@variable(model,base_name = string("t_section",endpt_indx)) )
+        )
+    end
+
+    vmax = 4.0
+    
+    for endpt_indx in range(1,stop=11-1)
+        # Get times
+        x1, t1 = pwl_curve[endpt_indx]
+        x2, t2 = pwl_curve[endpt_indx+1]
+
+        # Constrain dynamics evolution
+        @constraint(model, x2 - x1 .<= 4)
+        @constraint(model, x2 - x1 .>= -4)
+    end
+
+    add_time_constraints(model, pwl_curve)
+
+    add_velocity_constraints(model, pwl_curve, vmax)
+
+    @constraint(model,pwl_curve[1][1] .== zeros(2,1))
+
+    optimize!(model)
+
+    # Get the value of every end point.
+    for endpt_indx in range(1,stop=length(pwl_curve)-1)
+        tuple0 = pwl_curve[endpt_indx]
+        x_i = [value(tuple0[1][1]); value(tuple0[1][2])]
+        t_i = value(tuple0[2])
+
+        tuple1 = pwl_curve[endpt_indx+1]
+        x_ip1 = [value(tuple1[1][1]); value(tuple1[1][2])]
+        t_ip1 = value(tuple1[2])
+
+        @test t_i < t_ip1
     end
 
 end

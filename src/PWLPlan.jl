@@ -7,6 +7,7 @@ Description:
 """
 
 include("node.jl")
+include("plan.jl")
 
 using JuMP, Gurobi
 
@@ -212,59 +213,6 @@ function clearSpecTree(spec::Float64)
 end
 
 """
-add_space_constraints
-Description:
-
-Inputs:
-    jump_model: A model created for JuMP optimization.
-    curve_endpoints: A Vector containing states of the curve (these should be Vectors containing
-                    optimization variables)
-    bounds: a 2n length vector where n is the dimension of the state space.
-"""
-function add_space_constraints(jump_model,curve_endpoints::Vector{Vector{VariableRef}},bounds::Vector{Float64})
-    # Constants
-    dim = length(curve_endpoints[1])
-    
-    # Check to see that there are 4 elements in bounds array
-    if length(bounds) != 4
-        throw(ErrorException("The bounds vector should only have 4 elements!"))
-    end
-
-    # Create bounds as constraints on a JuMP model
-    for x in curve_endpoints
-        for dim_index in range(1,stop=dim)
-            @constraint(jump_model, bounds[1+2*(dim_index-1)] .<= x[dim_index] .<= bounds[2+2*(dim_index-1)])
-        end
-    end
-end
-
-"""
-add_velocity_constraints(model,pwl_curve,vmax)
-Description:
-
-Inputs:
-
-"""
-function add_velocity_constraints(jump_model,pwl_curve::Vector{Tuple{Vector{VariableRef},VariableRef}},vmax::Float64=3.0)
-    # Constants
-    dim = pwl_curve[1][1]
-
-    # Iterate through each segment
-    for segment_index in range(1,stop=length(pwl_curve)-1)
-        x1, t1 = pwl_curve[segment_index]
-        x2, t2 = pwl_curve[segment_index+1]
-
-        # create L1 distance expression?
-        for l1_norm_constraint_index in range(1,stop=2^dim)
-            # Create vector a, which we will mulyiply x to create constraints for ||x||_1 (a*x)
-            a = digits(l1_norm_constraint_index, base=2, pad=dim) -1 * (ones(dim,1) - digits(l1_norm_constraint_index, base=2, pad=dim) )
-            println(a)
-        end
-        @constraint(jump_model, [vmax, x1 - x2] in MOI.NormOneCone(length(x1)+1))
-    end
-end
-
-"""
 plan(x0s)
 Description:
     The planning function for the STLPlanning python repository.
@@ -311,7 +259,10 @@ function plan(x0s::Vector{Vector{Float64}},specificationTree::Vector{Node},limit
             for i in range(1,num_segs+1)
                 push!(
                     pwl_curve,
-                    [@variable(model,[1:dims],base_name = "x"+String(index_a)+"_"),@variable(model,)]
+                    [
+                        @variable(model,[1:dims],base_name = string("x",index_a,"_section",endpt_indx)),
+                        @variable(model,base_name = string("t",index_a,"_section",endpt_indx))
+                    ]
                 )
             end
             # This contains num_segs segments, which means we need
@@ -319,9 +270,13 @@ function plan(x0s::Vector{Vector{Float64}},specificationTree::Vector{Node},limit
             push!(pwl_curves,pwl_curve)
             
             # Create initial constraints
-            for dim_index in range(1,stop=dims)
-                @constraint(model, pwl_curve[0][0][dim_index,1] == x0[dim_index])
-            end
+            @constraint(model, pwl_curve[1][1] .== x0[dim_index]) #Initial state
+            @constraint(model,pwl_curve[1][2] == 0.0) #initial time
+
+            add_velocity_constraints(model,pwl_curve,vmax)
+            add_time_constraints(model,pwl_curve,tmax)
+
+            
         end
 
     end

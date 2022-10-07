@@ -80,3 +80,33 @@ end
 function DisjunctionNode(childrenIn::Vector{Node})::DisjunctionNode
     return DisjunctionNode(childrenIn,[],[],"")
 end
+
+#=
+# Helper Functions 
+=#
+
+"""
+handleSpecTree
+Description:
+    This function appears to create optimization AND expressions for each of the nodes in the tree.
+"""
+function handleSpecTree(specificationTreeRoot::Node,pwl_curve::Vector{Tuple{Vector{VariableRef},VariableRef}},bloat_factor::Float64,size)
+    # Recursion Starts Here (Recurse for each dependency to this node)
+    for dependency in specificationTreeRoot.Children
+        handleSpecTree(dependency, pwl_curve, bloat_factor,size)
+    end
+
+    # Input Processing
+    if length(specificationTreeRoot.Zs) == length(pwl_curve)-1
+        return
+    elseif length(specificationTreeRoot.Zs) > 0
+        throw(ErrorException("Incomplete Zs!"))
+    end
+
+    # Now, use the expressions provided by our children to create constraints this node (specificationTreeRoot).
+    if specificationTreeRoot.Operator == "mu"
+        specificationTreeRoot.Zs = [ mu(i) ]
+    end
+    
+
+end
