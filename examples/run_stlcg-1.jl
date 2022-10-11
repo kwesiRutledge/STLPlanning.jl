@@ -5,10 +5,13 @@ Description:
     from the original STLPlanning repo.
 """
 
+using Plots
+using Polyhedra
+
 include("../src/PWLPlan.jl")
 
 x0 = [  -1. ;
-        1. ]
+        -1. ]
 
 wall_half_width = 0.05
 A = [   -1.0 0 ;
@@ -72,4 +75,30 @@ spec = BasicNode("and", [phi_1,phi_2,phi_3], NodeInfo())
 x0s = [x0]
 specs = [spec]
 goals = [goal]
-pwl_curves = plan(x0s, specs, 0.05 , [], 9, [], vmax, 1e-4, -1, tmax, [], 0.11*4/2)
+pwl_curves = plan(x0s, specs, 0.05 , [], 9, [], vmax, 1e-4, -1, tmax, goals, 0.11*4/2)
+
+# Plot On A Figure
+
+# Plot Regions
+h1 = HalfSpace(A[1,:],b2[1]) ∩ HalfSpace(A[2,:],b2[2]) ∩ HalfSpace(A[3,:],b2[3]) ∩ HalfSpace(A[4,:],b2[4])
+p1 = polyhedron(h1)
+plot!(p1)
+
+h2 = HalfSpace(A[1,:],b3[1]) ∩ HalfSpace(A[2,:],b3[2]) ∩ HalfSpace(A[3,:],b3[3]) ∩ HalfSpace(A[4,:],b3[4])
+p2 = polyhedron(h2)
+plot!(p2)
+
+hc = HalfSpace(A[1,:],c1[1]) ∩ HalfSpace(A[2,:],c1[2]) ∩ HalfSpace(A[3,:],c1[3]) ∩ HalfSpace(A[4,:],c1[4])
+pc = polyhedron(hc)
+plot!(pc)
+
+# Plot Trajectory
+x_traj = zeros((2,length(pwl_curves[1])))
+for time_index in range(1,stop=length(pwl_curves[1]))
+    x_t = Vector{Float64}(pwl_curves[1][time_index][1])
+    x_traj[:,time_index] = x_t 
+end
+println(x_traj)
+plot!(x_traj[1,:],x_traj[2,:])
+
+savefig("../images/stlcg-1.png")

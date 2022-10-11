@@ -156,23 +156,38 @@ function handleSpecTree(specificationTreeRoot::Node,pwl_curve::Vector{Tuple{Vect
         throw(ErrorException("Incomplete Zs!"))
     end
 
+    # println("Current Node")
+    # println(specificationTreeRoot)
+
     # Now, use the expressions provided by our children to create constraints this node (specificationTreeRoot).
     if specificationTreeRoot.Operation == "mu"
-        for i in range(1,stop=length(length(pwl_curve)-1))
+        for i in range(1,stop=length(pwl_curve)-1)
             push!( 
                 specificationTreeRoot.Zs , 
-                mu(i, pwl_curve, spec.Info.A, spec.Info.b, bloat_factor)
+                mu(
+                    i, 
+                    pwl_curve, 
+                    specificationTreeRoot.Info.A, 
+                    specificationTreeRoot.Info.b,
+                    bloat_factor
+                )
             )
         end
     elseif specificationTreeRoot.Operation == "negmu"
-        for i in range(1,length(length(pwl_curve)-1))
+        for i in range(1,stop=length(pwl_curve)-1)
             push!(
                 specificationTreeRoot.Zs ,
-                negmu(i, pwl_curve, spec.Info.A, spec.Info.b, bloat_factor + size)
+                negmu(
+                    i, 
+                    pwl_curve, 
+                    specificationTreeRoot.Info.A, 
+                    specificationTreeRoot.Info.b,
+                    bloat_factor + size
+                )
             )
         end
     elseif specificationTreeRoot.Operation == "and"
-        for segment_index in range(1,length(length(pwl_curve)-1))
+        for segment_index in range(1,stop=length(pwl_curve)-1)
             conjunction_at_i_zs = []
             for child in specificationTreeRoot.Children
                 child_z_i = child.Zs[segment_index]
@@ -184,7 +199,7 @@ function handleSpecTree(specificationTreeRoot::Node,pwl_curve::Vector{Tuple{Vect
             )
         end
     elseif (specificationTreeRoot.Operation == "or") || ( specificationTreeRoot.Operation == "∧" )
-        for segment_index in range(1,length(length(pwl_curve)-1))
+        for segment_index in range(1,stop=length(pwl_curve)-1)
             disjunction_at_i_zs = []
             for child in specificationTreeRoot.Children
                 child_z_i = child.Zs[segment_index]
@@ -196,27 +211,27 @@ function handleSpecTree(specificationTreeRoot::Node,pwl_curve::Vector{Tuple{Vect
             )
         end
     elseif (specificationTreeRoot.Operation == "F") || (specificationTreeRoot.Operation == "♢")
-        for segment_index in range(1,stop=length(length(pwl_curve)-1))
+        for segment_index in range(1,stop=length(pwl_curve)-1)
             push!(
                 specificationTreeRoot.Zs ,
                 eventually(
                     segment_index,
-                    spec.Info.IntervalStart,
-                    spec.Info.IntervalEnd,
-                    spec.Children[1].Zs, # Why use just the first child? Their should only be 1 child for an eventually node. It represents the formula we want to "eventually" hold.
+                    specificationTreeRoot.Info.IntervalStart,
+                    specificationTreeRoot.Info.IntervalEnd,
+                    specificationTreeRoot.Children[1].Zs, # Why use just the first child? Their should only be 1 child for an eventually node. It represents the formula we want to "eventually" hold.
                     pwl_curve
                 )
             )
         end
     elseif (specificationTreeRoot.Operation == "A") || (specificationTreeRoot.Operation == "□")
-        for segment_index in range(1,stop=length(length(pwl_curve)-1))
+        for segment_index in range(1,stop=length(pwl_curve)-1)
             push!(
                 specificationTreeRoot.Zs ,
                 always(
                     segment_index,
-                    spec.Info.IntervalStart,
-                    spec.Info.IntervalEnd,
-                    spec.Children[1].Zs, # Why use just the first child? Their should only be 1 child for an eventually node. It represents the formula we want to "eventually" hold.
+                    specificationTreeRoot.Info.IntervalStart,
+                    specificationTreeRoot.Info.IntervalEnd,
+                    specificationTreeRoot.Children[1].Zs, # Why use just the first child? There should only be 1 child for an eventually node. It represents the formula we want to "eventually" hold.
                     pwl_curve
                 )
             )
@@ -235,7 +250,12 @@ Description:
 
 """
 function gen_CDTree_constraints(jump_model, rootNode::Node)
-    if length(rootNode.Children)
+    # println("Current node: ")
+    # println(rootNode)
+    # println(rootNode.Children)
+    # println("")
+
+    if length(rootNode.Children) == 0
         # Return the node itself
         return Vector([rootNode])
     else 
@@ -247,12 +267,12 @@ function gen_CDTree_constraints(jump_model, rootNode::Node)
         # Create the constraints for the dependencies
         dependency_constraints = []
         for child in rootNode.Children # Creating constraints from each dependency
-            push!(
+            append!(
                 dependency_constraints, 
                 gen_CDTree_constraints(jump_model,child)
             )
         end
-        
+
         #
         Zs = []
         for dependent_constraint in dependency_constraints
@@ -260,22 +280,31 @@ function gen_CDTree_constraints(jump_model, rootNode::Node)
                 z = @variable(jump_model,binary=true)
                 push!(Zs,z)
                 
-                interm_constraint = []
+                interm_constraint = Vector{AffExpr}([])
                 for constraint in dependent_constraint
+                    println("constraint = ")
+                    println(constraint)
                     push!(interm_constraint , constraint + M * (1 - z))
                 end
                 dependent_constraint = interm_constraint
             end
             push!(rootNode.Constraints,dependent_constraint)
+            # println(rootNode.Constraints)
         end
 
         if length(Zs) > 0
             push!(rootNode.Constraints,sum(Zs)-1)
         end
 
+        println("Completed handleSpecTree!")
+
         return rootNode.Constraints
     end
     
+end
+
+function gen_CDTree_constraints(jump_model, rootNode::Union{AffExpr,VariableRef})
+    return Vector([rootNode])
 end
 
 """
@@ -286,6 +315,6 @@ Description:
 function add_CDTree_Constraints(jump_model, rootNode::Node)
     constrs = gen_CDTree_constraints(jump_model, rootNode::Node)
     for con in constrs
-        @constraint(jump_model, con >= 0)
+        @constraint(jump_model, con .>= 0.0)
     end
 end

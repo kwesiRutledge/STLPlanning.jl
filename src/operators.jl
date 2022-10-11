@@ -95,7 +95,7 @@ function always(segment_index::Int,a::Float64,b::Float64,zphis::Vector{Any},pwl_
         t_j_1 = pwl_curve[j+1][2]
         push!(conjunctions,
             DisjunctionNode(
-                Vector{Union{Node,Float64}}([noIntersection(t_j,t_j_1, t_i + a , t_i_1 + b),zphis[j]])
+                Vector{Union{Node,Float64,VariableRef}}([noIntersection(t_j,t_j_1, t_i + a , t_i_1 + b),zphis[j]])
                 )
             )
     end
@@ -120,8 +120,27 @@ Variables:
 """
 function eventually(segment_index::Int,a::Float64,b::Float64,zphis,pwl_curve::Vector{Tuple{Vector{Any},Any}})
     # Get The start times of each pwl_curve
-    t_i = pwl_curve[segment_index][1]
-    t_i_1 = pwl_curve[segment_index+1][1]
+    t_i = pwl_curve[segment_index][2]
+    t_i_1 = pwl_curve[segment_index+1][2]
+
+    z_interval_width = b - a - (t_i_1 - t_i) - EPS
+
+    # Loop
+    disjunctions = Vector{Node}([])
+    for j in range(1,stop=length(pwl_curve)-1)
+        t_j = pwl_curve[j][2]
+        t_j_1 = pwl_curve[j+1][2]
+        push!(disjunctions,ConjunctionNode([hasIntersection(t_j,t_j_1, t_i + a , t_i_1 + b),zphis[j]]))
+    end
+    
+    # Create node
+    return ConjunctionNode([z_interval_width,DisjunctionNode(disjunctions)])
+end
+
+function eventually(segment_index::Int,a::Float64,b::Float64,zphis,pwl_curve::Vector{Tuple{Vector{VariableRef},VariableRef}})
+    # Get The start times of each pwl_curve
+    t_i = pwl_curve[segment_index][2]
+    t_i_1 = pwl_curve[segment_index+1][2]
 
     z_interval_width = b - a - (t_i_1 - t_i) - EPS
 
@@ -268,7 +287,7 @@ Variables:
     b - Matrix/vector defining the right hand side of linear inequality.
     bloat_factor - Float that defines how much bloating to apply to the linear inequalities.
 """
-function negmu(segment_index::Int, pwl_curve, A, b, bloat_factor::Float64=-1.0)
+function negmu(segment_index::Int, pwl_curve, A, b, bloat_factor::Float64=-1.0)::DisjunctionNode
     # 0 is the default bloat_factor
     bloat_factor = max(0,bloat_factor)
 

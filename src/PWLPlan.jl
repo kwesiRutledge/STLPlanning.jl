@@ -22,6 +22,7 @@ using JuMP, Gurobi
 # =========
 
 const EPS = 0.00001
+const M = 1e3
 
 # =======================
 # Regular Types (Structs)
@@ -83,7 +84,7 @@ function plan(x0s::Vector{Vector{Float64}},specifications::Vector{BasicNode},blo
         end
 
         println("----------------------------")
-        println("num_segs", num_segs)
+        println("num_segs = ", num_segs)
 
         pwl_curves = []
         
@@ -120,10 +121,22 @@ function plan(x0s::Vector{Vector{Float64}},specifications::Vector{BasicNode},blo
             @constraint(model, pwl_curve[1][1] .== x0) #Initial state
             @constraint(model,pwl_curve[1][2] == 0.0) #initial time
 
+            # Create goals
+            if hard_goals != []
+                goal_a = hard_goals[index_a]
+                @constraint(model, pwl_curve[length(pwl_curve)][1] .== goal_a )
+            end
+
+            # Add Limits on Robots Movement
             add_velocity_constraints(model,Vector{Tuple{Vector{VariableRef},VariableRef}}(pwl_curve),vmax)
             add_time_constraints(model,Vector{Tuple{Vector{VariableRef},VariableRef}}(pwl_curve),tmax)
 
-            handleSpecTree(spec, Vector{Tuple{Vector{VariableRef},VariableRef}}(pwl_curve), bloat, size)
+            handleSpecTree(
+                spec,
+                Vector{Tuple{Vector{VariableRef},VariableRef}}(pwl_curve),
+                bloat,
+                size
+            )
             add_CDTree_Constraints(model, spec.Zs[1])
 
         end
@@ -139,7 +152,7 @@ function plan(x0s::Vector{Vector{Float64}},specifications::Vector{BasicNode},blo
         # Create objective
         pwl_curve1 = pwl_curves[1]
         obj = pwl_curve1[length(pwl_curve1)][2]
-        for curve_index in range(2,length(pwl_curves))
+        for curve_index in range(2,stop=length(pwl_curves))
             pwl_curve_i = pwl_curves[curve_index]
             obj += pwl_curve_i[length(pwl_curve_i)][2]
         end
@@ -152,7 +165,34 @@ function plan(x0s::Vector{Vector{Float64}},specifications::Vector{BasicNode},blo
         optimize!(model)
 
         println(string("Solution time : ", solve_time(model)))
-        
+
+        # IF FEASIBLE
+        if objective_value(model) > 0
+
+            # Extract Trajectory
+            pwl_curves_output = []
+            x_dim = length(x0s[1])
+            for curve_index in range(1,stop=length(pwl_curves))
+                pwl_i_output = Vector{Tuple{Vector{Float64},Float64}}([])
+                for time_stamp_index in range(1,stop=length(pwl_curve1))
+                    x_i_k = Vector{Float64}([])
+                    for dim_index in range(1,stop=x_dim)
+                        push!(x_i_k,value(pwl_curves[curve_index][time_stamp_index][1][dim_index]))
+                    end
+                    t_i_k = value(pwl_curves[curve_index][time_stamp_index][2])
+                    
+                    #Add tuple to pwl_i_output
+                    push!(
+                        pwl_i_output,
+                        tuple(x_i_k,t_i_k)
+                    )
+                end
+                push!(pwl_curves_output,pwl_i_output)
+            end
+
+            println(pwl_curves_output)
+            return pwl_curves_output
+        end    
 
     end
 end
