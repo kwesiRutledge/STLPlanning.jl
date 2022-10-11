@@ -73,11 +73,12 @@ spec = BasicNode("and", [phi_1,phi_2,phi_3], NodeInfo())
 
 # Call plan
 x0s = [x0]
-specs = [spec]
+specs = [phi_3]
 goals = [goal]
 pwl_curves = plan(x0s, specs, 0.05 , [], 9, [], vmax, 1e-4, -1, tmax, goals, 0.11*4/2)
 
 # Plot On A Figure
+plot()
 
 # Plot Regions
 h1 = HalfSpace(A[1,:],b2[1]) ∩ HalfSpace(A[2,:],b2[2]) ∩ HalfSpace(A[3,:],b2[3]) ∩ HalfSpace(A[4,:],b2[4])
@@ -94,9 +95,11 @@ plot!(pc)
 
 # Plot Trajectory
 x_traj = zeros((2,length(pwl_curves[1])))
-for time_index in range(1,stop=length(pwl_curves[1]))
-    x_t = Vector{Float64}(pwl_curves[1][time_index][1])
+pwl_curve1 = pwl_curves[1]
+for time_index in range(1,stop=length(pwl_curve1))
+    x_t = Vector{Float64}(pwl_curve1[time_index][1])
     x_traj[:,time_index] = x_t 
+    println(pwl_curve1[time_index][2])
 end
 println(x_traj)
 plot!(x_traj[1,:],x_traj[2,:])

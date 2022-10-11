@@ -119,7 +119,7 @@ function plan(x0s::Vector{Vector{Float64}},specifications::Vector{BasicNode},blo
             
             # Create initial constraints
             @constraint(model, pwl_curve[1][1] .== x0) #Initial state
-            @constraint(model,pwl_curve[1][2] == 0.0) #initial time
+            @constraint(model, pwl_curve[1][2] == 0.0) #initial time
 
             # Create goals
             if hard_goals != []

@@ -225,6 +225,7 @@ function handleSpecTree(specificationTreeRoot::Node,pwl_curve::Vector{Tuple{Vect
         end
     elseif (specificationTreeRoot.Operation == "A") || (specificationTreeRoot.Operation == "□")
         for segment_index in range(1,stop=length(pwl_curve)-1)
+            println(string("segment #",segment_index))
             push!(
                 specificationTreeRoot.Zs ,
                 always(
@@ -275,19 +276,31 @@ function gen_CDTree_constraints(jump_model, rootNode::Node)
 
         #
         Zs = []
-        for dependent_constraint in dependency_constraints
+        # println(dependency_constraints)
+        for constraint_index in range(1,stop=length(dependency_constraints))
+            dependent_constraint = dependency_constraints[constraint_index]
+            # println(dependent_constraint)
             if isa( rootNode , DisjunctionNode )
-                z = @variable(jump_model,binary=true)
+                z = @variable(
+                    jump_model,
+                    base_name=string("z",constraint_index),
+                    binary=true
+                )
                 push!(Zs,z)
                 
                 interm_constraint = Vector{AffExpr}([])
                 for constraint in dependent_constraint
-                    println("constraint = ")
-                    println(constraint)
+                    # println("constraint = ")
+                    # println( constraint )
                     push!(interm_constraint , constraint + M * (1 - z))
                 end
                 dependent_constraint = interm_constraint
             end
+
+            # if isa( rootNode , ConjunctionNode )
+            #     println(dependent_constraint)
+            # end
+
             push!(rootNode.Constraints,dependent_constraint)
             # println(rootNode.Constraints)
         end
@@ -314,7 +327,9 @@ Description:
 """
 function add_CDTree_Constraints(jump_model, rootNode::Node)
     constrs = gen_CDTree_constraints(jump_model, rootNode::Node)
+    println("All constraints!")
     for con in constrs
         @constraint(jump_model, con .>= 0.0)
+        println(con)
     end
 end
