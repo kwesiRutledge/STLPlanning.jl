@@ -175,6 +175,8 @@ function handleSpecTree(specificationTreeRoot::Node,pwl_curve::Vector{Tuple{Vect
         end
     elseif specificationTreeRoot.Operation == "negmu"
         for i in range(1,stop=length(pwl_curve)-1)
+            println(string("negmu at segment #",i))
+            # println(string("[negmu] i = ",i))
             push!(
                 specificationTreeRoot.Zs ,
                 negmu(
@@ -225,7 +227,6 @@ function handleSpecTree(specificationTreeRoot::Node,pwl_curve::Vector{Tuple{Vect
         end
     elseif (specificationTreeRoot.Operation == "A") || (specificationTreeRoot.Operation == "□")
         for segment_index in range(1,stop=length(pwl_curve)-1)
-            println(string("segment #",segment_index))
             push!(
                 specificationTreeRoot.Zs ,
                 always(
@@ -277,31 +278,43 @@ function gen_CDTree_constraints(jump_model, rootNode::Node)
         #
         Zs = []
         # println(dependency_constraints)
-        for constraint_index in range(1,stop=length(dependency_constraints))
-            dependent_constraint = dependency_constraints[constraint_index]
-            # println(dependent_constraint)
-            if isa( rootNode , DisjunctionNode )
-                z = @variable(
-                    jump_model,
-                    base_name=string("z",constraint_index),
-                    binary=true
-                )
-                push!(Zs,z)
-                
-                interm_constraint = Vector{AffExpr}([])
-                for constraint in dependent_constraint
-                    # println("constraint = ")
-                    # println( constraint )
-                    push!(interm_constraint , constraint + M * (1 - z))
+        for child_index in range(1,stop=length(rootNode.Children))
+            child_i = rootNode.Children[child_index]
+            
+            if isa(child_i,Node)
+                childs_constraints = child_i.Constraints
+                println(childs_constraints)
+
+                if isa( rootNode , DisjunctionNode )
+                    println("Found a disjunction node!")
+                    z = @variable(
+                        jump_model,
+                        binary=true
+                    )
+                    push!(Zs,z)
+                    
+                    interm_constraints = Vector{AffExpr}([])
+                    for constraint in childs_constraints
+                        # println("constraint = ")
+                        # println( constraint )
+                        println(constraint)
+                        push!(interm_constraints , constraint + M * (1 - z))
+                    end
+                    childs_constraints = interm_constraints
                 end
-                dependent_constraint = interm_constraint
+
+                # if isa( rootNode , ConjunctionNode )
+                #     println(dependent_constraint)
+                # end
+
+            elseif isa(child_i,Union{GenericAffExpr})
+                # If the child is an affine expression, then it IS a constraint.
+                childs_constraints = [child_i]
+            else
+                throw(ErrorException("There was an error trying to find the appropriate child's type!"))
             end
 
-            # if isa( rootNode , ConjunctionNode )
-            #     println(dependent_constraint)
-            # end
-
-            push!(rootNode.Constraints,dependent_constraint)
+            append!(rootNode.Constraints,childs_constraints)
             # println(rootNode.Constraints)
         end
 
@@ -309,7 +322,7 @@ function gen_CDTree_constraints(jump_model, rootNode::Node)
             push!(rootNode.Constraints,sum(Zs)-1)
         end
 
-        println("Completed handleSpecTree!")
+        # println("Completed handleSpecTree!")
 
         return rootNode.Constraints
     end
@@ -327,9 +340,9 @@ Description:
 """
 function add_CDTree_Constraints(jump_model, rootNode::Node)
     constrs = gen_CDTree_constraints(jump_model, rootNode::Node)
-    println("All constraints!")
+    # println("All constraints!")
     for con in constrs
-        @constraint(jump_model, con .>= 0.0)
-        println(con)
+        @constraint(jump_model, con >= 0.0)
+        # println(con)
     end
 end

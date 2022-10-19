@@ -105,3 +105,10 @@ println(x_traj)
 plot!(x_traj[1,:],x_traj[2,:])
 
 savefig("../images/stlcg-1.png")
+
+# Test the curve values with the polyhedron for C
+for traj_ind in range(1,stop=size(x_traj,2))
+    x_t = x_traj[:,traj_ind]
+    println(A * x_t )
+    println(A * x_t - c1 .>= 0)
+end

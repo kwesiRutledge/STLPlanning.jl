@@ -264,7 +264,7 @@ function mu(segment_index::Int, pwl_curve, A, b, bloat_factor::Float64=-1.0)
         a = A[edge_index,:]
         for j in range(segment_index,stop=segment_index+1)
             x = pwl_curve[j][1]
-            push!(conjunctions, b[edge_index] - norm(a) * bloat_factor - transpose(a) * x - EPS)
+            push!(conjunctions, b[edge_index] - norm(a) * bloat_factor - sum(a[i] * x[i] for i in range(1,length(a))) - EPS)
         end
     end
     
@@ -300,10 +300,12 @@ function negmu(segment_index::Int, pwl_curve, A, b, bloat_factor::Float64=-1.0):
                           # the FULL line segment x[j] to x[j+1] does not satisfy the task.
         for j in range(segment_index,stop=segment_index+1)
             x = pwl_curve[j][1]
-            push!(conjunctions, (transpose(a) * x) - b[edge_index] - norm(a) * bloat_factor - EPS)
+            push!(conjunctions, sum(a[i] * x[i] for i in range(1,length(a))) - b[edge_index] - norm(a) * bloat_factor - EPS)
         end
+        
         push!(disjunctions,ConjunctionNode(conjunctions))
     end
     
     return DisjunctionNode(disjunctions)
+    
 end
