@@ -227,6 +227,9 @@ function handleSpecTree(specificationTreeRoot::Node,pwl_curve::Vector{Tuple{Vect
         end
     elseif (specificationTreeRoot.Operation == "A") || (specificationTreeRoot.Operation == "□")
         for segment_index in range(1,stop=length(pwl_curve)-1)
+            println("specificationTree.Children[1].Zs =")
+            println(length(specificationTreeRoot.Children))
+            println(specificationTreeRoot.Children[1].Zs)
             push!(
                 specificationTreeRoot.Zs ,
                 always(
@@ -252,10 +255,10 @@ Description:
 
 """
 function gen_CDTree_constraints(jump_model, rootNode::Node)
-    # println("Current node: ")
-    # println(rootNode)
-    # println(rootNode.Children)
-    # println("")
+    println("Current node: ")
+    println(rootNode)
+    println(rootNode.Children)
+    println("")
 
     if length(rootNode.Children) == 0
         # Return the node itself
@@ -268,7 +271,10 @@ function gen_CDTree_constraints(jump_model, rootNode::Node)
 
         # Create the constraints for the dependencies
         dependency_constraints = []
+        child_index = 0
         for child in rootNode.Children # Creating constraints from each dependency
+            # println(string("child #",child_index))
+            child_index = child_index + 1
             append!(
                 dependency_constraints, 
                 gen_CDTree_constraints(jump_model,child)
@@ -278,44 +284,49 @@ function gen_CDTree_constraints(jump_model, rootNode::Node)
         #
         Zs = []
         # println(dependency_constraints)
-        for child_index in range(1,stop=length(rootNode.Children))
-            child_i = rootNode.Children[child_index]
+        println("rootNode is still:")
+        println(rootNode)
+        for dep_con_index in range(1,stop=length(dependency_constraints))
+            dep_cons = dependency_constraints[dep_con_index]
             
-            if isa(child_i,Node)
-                childs_constraints = child_i.Constraints
-                println(childs_constraints)
+            println("dep_cons = ")
+            println(dep_cons)
+            println(string("isa(dep_con,Node) = ",isa(dep_cons,Node)))
+            println(string("isa(rootNode,Node) = ",isa(rootNode,Node)))
 
-                if isa( rootNode , DisjunctionNode )
-                    println("Found a disjunction node!")
-                    z = @variable(
-                        jump_model,
-                        binary=true
-                    )
-                    push!(Zs,z)
-                    
-                    interm_constraints = Vector{AffExpr}([])
-                    for constraint in childs_constraints
-                        # println("constraint = ")
-                        # println( constraint )
-                        println(constraint)
-                        push!(interm_constraints , constraint + M * (1 - z))
-                    end
-                    childs_constraints = interm_constraints
+            interm_constraints = []
+            if isa( rootNode , DisjunctionNode )
+                println("Found a disjunction node!")
+                z = @variable(
+                    jump_model,
+                    binary=true
+                )
+                push!(Zs,z)
+                
+                #interm_constraints = Vector{AffExpr}([])
+                println("Iterating through dep_cons...")
+                for constraint in dep_cons
+                    println(constraint)
+                    println(constraint + M * (1 - z))
+                    push!(interm_constraints , constraint + M * (1 - z))
                 end
-
-                # if isa( rootNode , ConjunctionNode )
-                #     println(dependent_constraint)
-                # end
-
-            elseif isa(child_i,Union{GenericAffExpr})
-                # If the child is an affine expression, then it IS a constraint.
-                childs_constraints = [child_i]
+                println(interm_constraints)
+                println("done with dep_cons")
+            end
+            
+            if isa(dep_cons,AffExpr)
+                interm_constraints = [dep_cons]
             else
-                throw(ErrorException("There was an error trying to find the appropriate child's type!"))
+                interm_constraints = dep_cons
             end
 
-            append!(rootNode.Constraints,childs_constraints)
-            # println(rootNode.Constraints)
+            
+
+            append!(rootNode.Constraints,interm_constraints)
+            
+            println("rootNode.Constraints")
+            println(rootNode.Constraints)
+            println("")
         end
 
         if length(Zs) > 0
@@ -345,4 +356,25 @@ function add_CDTree_Constraints(jump_model, rootNode::Node)
         @constraint(jump_model, con >= 0.0)
         # println(con)
     end
+end
+
+"""
+clearSpecTree
+Description:
+    Removes all of the "z" s from each node in the tree.
+"""
+function clearSpecTree(spec::Node)
+    # Iterate through each dependency of the tree
+    for node in spec.Children
+        clearSpecTree(node)
+    end
+    spec.Zs = []
+end
+
+function clearSpecTree(spec::Float64)
+    # We should not do anything if the node is a float and
+    # not a Node
+
+    # Do nothing
+
 end
